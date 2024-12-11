@@ -14,12 +14,19 @@ export const origin = new THREE.Vector3();
 function init() {
   // 制御変数の定義
   const param = {
-    axes: true, // 座標軸
+    axes: false, // 座標軸
+    Earth: true, //地球
+    follow:false,//追跡
+    course:false //コース
+    
   };
 
   // GUIコントローラの設定
   const gui = new GUI();
   gui.add(param, "axes").name("座標軸");
+  gui.add(param,"Earth").name("地球");
+  gui.add(param,"follow").name("追跡");
+  gui.add(param,"course").name("コース");
 
   // シーン作成
   const scene = new THREE.Scene();
@@ -41,35 +48,79 @@ function init() {
     const w = 1;
     let h = 5;
     const d = 1;
-    for(let i = 0;i<Math.PI;i+=0.5){
-      for(let theta=0;theta<2*Math.PI;theta+=0.3){
-        h+=0.01;
-        const building = new THREE.Mesh(
-          new THREE.BoxGeometry(w,h,d),
-          new THREE.MeshLambertMaterial({
-            color:0x408080
-          })
-        );
-        //theta=(theta+0.01)%(2*Math.PI)
-        building.position.set(
-          r*Math.sin(theta),
-          r*Math.cos(theta),
-          0//r*Math.sin(i)
-        );
-        building.rotation.z=-(theta)%(2*Math.PI);
-        //building.rotation.x=-i%(2*Math.PI);
-        //building.rotation.y=i%(2*Math.PI);
-        Earth.add(building);  
+    const buildings = new THREE.Group();
+    {
+      for(let i = 0;i<Math.PI;i+=0.5){
+        for(let theta=0;theta<2*Math.PI;theta+=0.5){
+          h+=0.01;
+          const building = new THREE.Mesh(
+            new THREE.BoxGeometry(w,h,d),
+            new THREE.MeshLambertMaterial({
+              color:0x408080
+            })
+          );
+          //theta=(theta+0.01)%(2*Math.PI)
+          building.position.set(
+            r*Math.sin(theta+i),
+            r*Math.cos(theta+i),
+            r*Math.sin(i)-5
+          );
+          building.rotation.z=-(theta+i)%(2*Math.PI);
+          //building.rotation.x=-i%(2*Math.PI);
+          //building.rotation.y=i%(2*Math.PI);
+          // building.geometry.computeBoundingBox();
+          buildings.add(building); 
+        }
       }
+      Earth.add(buildings);
     }
   }
   
+  
   scene.add(Earth);
+
+  // 自動操縦コースの設定
+  // 制御点
+  //r=10
+  const cr = r+2.0;
+  const controlPoints = [
+    [0, cr, 0],
+    [0, Math.sqrt(cr*cr-8*8), 8],
+    [8, Math.sqrt(cr*cr-8*8), 0],
+    [5, Math.sqrt(cr*cr-(5*5+4*4)), -4],
+    [-5,Math.sqrt(cr*cr-(5*5+4*4)) , -4],
+    [-7, 0, Math.sqrt(cr*cr-7*7)],
+    [6, -3, Math.sqrt(cr*cr-3*3-6*6)],
+    [8, -4, Math.sqrt(cr*cr-(8*8+4*4))],
+    [-5, 0, Math.sqrt(cr*cr-5*5)],
+  ]
+  const p0 = new THREE.Vector3();//p0,p1を用意
+  const p1 = new THREE.Vector3();
+  const course = new THREE.CatmullRomCurve3(
+    controlPoints.map((p,i)=>{
+      p0.set(...p);//制御点の配列からp0を取り出す
+      p1.set(...controlPoints[(i+1)%controlPoints.length]);//p0の次の点をp1に指定
+      return [
+        (new THREE.Vector3()).copy(p0),
+        (new THREE.Vector3()).lerpVectors(p0,p1,1/3),
+        (new THREE.Vector3()).lerpVectors(p0,p1,2/3),//p0とp1の間の1/3と2/3を計算
+      ];
+    }).flat(),true
+  );
+  // コースの描画
+  const points = course.getPoints(300);
+  const courseObject = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(points),
+    new THREE.LineBasicMaterial({color:"red"})
+  );
+  scene.add(courseObject);
+
+
   // ロボット作成
-  const Robot = new THREE.Group()
+  const Robot = new THREE.Group();
   const metalMaterial = new THREE.MeshPhongMaterial(
     {color: 0x707777, shininess: 60, specular: 0x222222 });
-  const redMaterial = new THREE.MeshBasicMaterial({color: 0xc00000});
+  
   const legRad = 0.5; // 脚の円柱の半径
   const legLen = 2; // 脚の円柱の長さ
   const legSep = 1.2; // 脚の間隔
@@ -107,10 +158,29 @@ function init() {
   );
   head.position.y=legLen+bodyH+headside/2;
   Robot.add(head);
-
+  //body.geometry.computeBoundingRobot();
   Robot.position.z=3;
-
+  
   scene.add(Robot);
+
+  //ビルの衝突
+  // function breakCheck(){
+  //   let hit = false;
+  //   const box = Robot.geometry.boundingRobot.clone();
+  //   box.translate(Robot.position);
+  //   buildings.children.forEach((building) =>{
+  //     if(!hit && building.visible){
+  //       let bill = building.geometry.boundingBox.clone();
+  //       box.translate(buildings.position);
+  //       box.translate(building.position);
+  //       if(bill.intersectsRobot(box)){
+  //         hit = true;
+  //         building.visible = false;
+  //       }
+  //     }
+  //   });
+    
+  // }
 
   // カメラの作成
   const camera = new THREE.PerspectiveCamera(
@@ -134,20 +204,59 @@ function init() {
   light.castShadow = true;
   scene.add(light);
   
-  let thetaRobo = 0;
+  // let thetaRobo1 = 0;
+  // let thetaRobo2 = Math.PI/2;
+  Robot.position.set(
+    0,0,0
+  );
   // 描画関数
-  const RoboPosition = new THREE.Vector3();
+  const clock = new THREE.Clock();
+  const cameraPosition = new THREE.Vector3();
+  const roboPosition = new THREE.Vector3();
+  const roboTarget = new THREE.Vector3();
+  
   function render() {
-    thetaRobo = (thetaRobo+0.01)%(2*Math.PI);
-    Robot.position.z=r*Math.cos(thetaRobo);
-    Robot.position.x=r*Math.cos(thetaRobo);
-    Robot.position.y=-r*Math.sin(thetaRobo);
-    Robot.rotation.x=(thetaRobo+1.5)%(2*Math.PI);
+    const elapsedTime = clock.getElapsedTime()/30;
+    course.getPointAt(elapsedTime%1,roboPosition);
+    Robot.position.copy(roboPosition);
+    course.getPointAt((elapsedTime+0.01)%1,roboTarget);
+    Robot.lookAt(roboTarget);
+
+    // thetaRobo1 = (thetaRobo1+0.01)%(2*Math.PI);
+    // thetaRobo2 = (thetaRobo2+0.01)%(2*Math.PI);
+    // Robot.position.z=r*Math.cos(thetaRobo2);
+    // Robot.position.y=-r*Math.sin(thetaRobo2);//*Math.sin(thetaRobo1);
+    // Robot.rotation.x=(thetaRobo1+Math.PI)%(2*Math.PI);
+
+
+    // Robot.position.x=r*Math.cos(thetaRobo2)*Math.cos(thetaRobo1);
+    //Robot.rotation.z=(thetaRobo2-1.5)%(2*Math.PI);
     
+    
+    
+    // breakCheck();
     // カメラ制御の更新
     orbitControls.update();
+    //カメラ追従
+    if(param.follow){
+      cameraPosition.lerpVectors(roboTarget,roboPosition,4);
+      cameraPosition.y+=legLen+bodyH+headside;
+      cameraPosition.z+=3;
+      cameraPosition.x-=3;
+      camera.position.copy(cameraPosition);
+      camera.lookAt(Robot.position);
+      camera.up.set(0,1,0);
+    }else{
+      camera.position.set(10,12,10);//上の方から
+      camera.lookAt(Robot.position);
+      camera.up.set(0,1,0)//カメラの上をy軸正の向きにする
+    }
     // 座標軸の表示
     axes.visible = param.axes;
+    //地球表示
+    Earth.visible = param.Earth;
+    //コース表示
+    courseObject.visible = param.course;
     // 描画
     renderer.render(scene, camera);
     // 次のフレームでの描画要請
