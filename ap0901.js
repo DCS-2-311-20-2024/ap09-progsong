@@ -131,7 +131,7 @@ function init() {
   const armLen = 2.4; // 腕の円柱の長さ
   const headside = 1;//頭の辺の長さ
   const legGeometry
-  = new THREE.CylinderGeometry(legLen/2, legLen/2, legRad, seg, seg);
+  = new THREE.CylinderGeometry(legLen/2, legLen/2, legRad, seg*2, seg*2);
 
   const legR = new THREE.Mesh(legGeometry, metalMaterial);
   legR.rotation.z=Math.PI/2;
