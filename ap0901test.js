@@ -68,7 +68,7 @@ function init() {
           building.rotation.z=-(theta+i)%(2*Math.PI);
           //building.rotation.x=-i%(2*Math.PI);
           //building.rotation.y=i%(2*Math.PI);
-          // building.geometry.computeBoundingBox();
+          building.geometry.computeBoundingBox();
           buildings.add(building); 
         }
       }
@@ -131,14 +131,11 @@ function init() {
   const armLen = 2.4; // 腕の円柱の長さ
   const headside = 1;//頭の辺の長さ
   const legGeometry
-  = new THREE.CylinderGeometry(legLen/2, legLen/2, legRad, seg, seg);
-
+  = new THREE.CylinderGeometry(legRad, legRad, legLen, seg, seg);
   const legR = new THREE.Mesh(legGeometry, metalMaterial);
-  legR.rotation.z=Math.PI/2;
   legR.position.set(-legSep/2, legLen/2, 0);
   Robot.add(legR);
   const legL = legR.clone();
-  legR.rotation.z=Math.PI/2;
   legL.position.set(legSep/2, legLen/2, 0);
   Robot.add(legL);
   const body = new THREE.Mesh(
@@ -161,29 +158,29 @@ function init() {
   );
   head.position.y=legLen+bodyH+headside/2;
   Robot.add(head);
-  //body.geometry.computeBoundingRobot();
+  Robot.geometry.computeBoundingBox();
   Robot.position.z=3;
   
   scene.add(Robot);
 
   //ビルの衝突
-  // function breakCheck(){
-  //   let hit = false;
-  //   const box = Robot.geometry.boundingRobot.clone();
-  //   box.translate(Robot.position);
-  //   buildings.children.forEach((building) =>{
-  //     if(!hit && building.visible){
-  //       let bill = building.geometry.boundingBox.clone();
-  //       box.translate(buildings.position);
-  //       box.translate(building.position);
-  //       if(bill.intersectsRobot(box)){
-  //         hit = true;
-  //         building.visible = false;
-  //       }
-  //     }
-  //   });
+  function breakCheck(){
+    let hit = false;
+    const box = Robot.geometry.boundingBox.clone();
+    box.translate(Robot.position);
+    buildings.children.forEach((building) =>{
+      if(!hit && building.visible){
+        let bill = building.geometry.boundingBox.clone();
+        box.translate(buildings.position);
+        box.translate(building.position);
+        if(bill.intersectsRobot(box)){
+          hit = true;
+          building.visible = false;
+        }
+      }
+    });
     
-  // }
+  }
 
   // カメラの作成
   const camera = new THREE.PerspectiveCamera(
@@ -237,7 +234,7 @@ function init() {
     
     
     
-    // breakCheck();
+    breakCheck();
     // カメラ制御の更新
     orbitControls.update();
     //カメラ追従
